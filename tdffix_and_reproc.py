@@ -2,6 +2,12 @@ import sys
 import pyfits
 import wfc3tools
 from wfc3tools import calwf3
+
+AUTHOR:
+Mike Dulude
+STScI
+dulude@stsci.edu
+
 '''
 
 This code resets the TDFTRANS header keyword to zero and reprocesses with the lastest 
