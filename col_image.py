@@ -6,10 +6,12 @@ This program creates an image of all WFC3 on-orbit columns for given TARGNAME,
 EXPTIME, and PROPOSID using Jay Anderson's master fits images.
 '''
 
+import argparse
 from astropy.io import ascii
 from astropy.io import fits
 import matplotlib.pyplot as plt
 import numpy as np
+import os
 import scipy
 import sqlite3
 
@@ -102,6 +104,7 @@ class colImage():
 
         # Parse results
         results = db_cursor.fetchall()
+        assert len(results) > 0, 'Query did not yield any resuts.'
         qldb_rootnames = [result[0].split('_')[0] for result in results]
 
         return qldb_rootnames
@@ -132,9 +135,52 @@ class colImage():
             '.fits', '_{}.fits'.format(self.targname))
         fits.writeto(newfile, cleaned_frame, header=None, clobber=True)
 
-    # -------------------------------------------------------------------------
+# -----------------------------------------------------------------------------
+# -----------------------------------------------------------------------------
+
+def parse_args():
+    '''
+    Parse command line arguments. Returns args object.
+    '''
+
+    # Create help strings
+    targname_help = 'The TARGNAME to use in the Quicklook database query'
+    exptime_help = 'The EXPTIME to use in the Quicklook database query'
+    master_image_help = 'The relative path of the master image file'
+
+    # Add arguments
+    parser = argparse.ArgumentParser()
+    parser.add_argument('-t', '--targname', type=str, help=targname_help,
+        action='store', required=True)
+    parser.add_argument('-e', '--exptime', type=str, help=exptime_help,
+        action='store', required=True)
+    parser.add_argument('-i', '--master_image', type=str, 
+        help=master_image_help, action='store', required=True)
+
+    # Parse args
+    args = parser.parse_args()
+
+    return args
+
+# -----------------------------------------------------------------------------
+
+def test_args(args):
+    '''
+    Ensures valid command line arguments.
+    '''
+
+    # Ensure master image exists
+    assert os.path.exists(args.master_image) is True, \
+        '{} does not exist.'.format(args.master_image)
+
+# -----------------------------------------------------------------------------
+
+
 
 if __name__ == '__main__':
 
-    col_image = colImage('DARK', '900.0', 'AMPC_I0101.fits')
+    args = parse_args()
+    test_args(args)
+
+    col_image = colImage(args.targname, args.exptime, args.master_image)
     col_image.col_image_main()
