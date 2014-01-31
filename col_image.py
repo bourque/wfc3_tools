@@ -9,10 +9,8 @@ EXPTIME, and PROPOSID using Jay Anderson's master fits images.
 import argparse
 from astropy.io import ascii
 from astropy.io import fits
-import matplotlib.pyplot as plt
 import numpy as np
 import os
-import scipy
 import sqlite3
 
 # -----------------------------------------------------------------------------
@@ -45,39 +43,11 @@ class colImage():
         print 'Reading data from {}.'.format(header_file)
 
         # Read in header file
-        header_data = ascii.read(header_file, data_start=0, 
+        self.header_data = ascii.read(header_file, data_start=0, 
             names=['col', 'nrec', 'rootname', 'imagetype', 'filter', 'exptime', 
                    'ccdgain', 'pa_v3', 'crpix1', 'crpix2', 'crval1', 'crval2', 
                    'cd1_1', 'cd1_2', 'cd2_1', 'cd2_2', 'bark', 'sigk', 
                    'rbiask', 'ibiask', 'loc'])
-
-        return header_data
-
-    # -------------------------------------------------------------------------
-
-    def remove_columns(self, frame, qldb_rootnames, header_data):
-        '''
-        Removes columns that do not contain data of interest by comparing the
-        rootnames extracted from the QL database to the those in the header 
-        file.
-        '''
-
-        print 'Removing unwanted columns'
-
-        # Remove excess columns at the end
-        excess_start = len(header_data)
-        excess_end = frame.shape[1]
-        excess_cols = range(excess_start, excess_end)
-        cleaned_frame = np.delete(frame, excess_cols, 1)
-
-        # Remove cols from other images
-        bad_cols = [
-            header_data['col'][i] 
-            for i in range(len(header_data)) 
-            if header_data['rootname'][i] not in qldb_rootnames]
-        cleaned_frame = np.delete(cleaned_frame, bad_cols, 1)
-
-        return cleaned_frame
 
     # -------------------------------------------------------------------------
 
@@ -105,9 +75,53 @@ class colImage():
         # Parse results
         results = db_cursor.fetchall()
         assert len(results) > 0, 'Query did not yield any resuts.'
-        qldb_rootnames = [result[0].split('_')[0] for result in results]
+        self.qldb_rootnames = [result[0].split('_')[0] for result in results]
 
-        return qldb_rootnames
+    # -------------------------------------------------------------------------
+
+    def remove_columns(self):
+        '''
+        Removes columns that do not contain data of interest by comparing the
+        rootnames extracted from the QL database to the those in the header 
+        file.
+        '''
+
+        print 'Removing unwanted columns'
+
+        # Remove excess columns at the end
+        excess_start = len(self.header_data)
+        excess_end = self.frame.shape[1]
+        excess_cols = range(excess_start, excess_end)
+        self.cleaned_frame = np.delete(self.frame, excess_cols, 1)
+
+        # Remove cols from other images
+        bad_cols = [
+            se;f.header_data['col'][i] 
+            for i in range(len(self.header_data)) 
+            if self.header_data['rootname'][i] not in self.qldb_rootnames]
+        self.cleaned_frame = np.delete(self.cleaned_frame, bad_cols, 1)
+
+    # -------------------------------------------------------------------------
+
+    def read_image():
+        '''
+        Reads in the 'master image'.
+        '''
+
+        # Read in FITS image
+        print 'Reading in master image.'
+        self.frame = fits.open(self.master_image, ignore_missing_end = True)[0].data
+
+    # -------------------------------------------------------------------------
+
+    def save_image():
+        '''
+        Saves the 'master image'.
+        '''
+
+        newfile = self.master_image.replace(
+            '.fits', '_{}.fits'.format(self.targname))
+        fits.writeto(newfile, self.cleaned_frame, header=None, clobber=True)
 
     # -------------------------------------------------------------------------
     # -------------------------------------------------------------------------
@@ -117,23 +131,11 @@ class colImage():
         The main controller.
         '''
 
-        # Query Quicklook Database to gather list of rootnames to process
-        qldb_rootnames = self.query_qldb()
-
-        # Read in amp header file
-        header_data = self.extract_header_data()
-
-        # Read in FITS image
-        print 'Reading in master image.'
-        frame = fits.open(self.master_image, ignore_missing_end = True)[0].data
-
-        # Remove unwanted columns in fits image
-        cleaned_frame = self.remove_columns(frame, qldb_rootnames, header_data)
-
-        # Save sub-image
-        newfile = self.master_image.replace(
-            '.fits', '_{}.fits'.format(self.targname))
-        fits.writeto(newfile, cleaned_frame, header=None, clobber=True)
+        self.query_qldb()
+        self.extract_header_data()
+        self.read_image()
+        self.remove_columns()
+        self.save_image()
 
 # -----------------------------------------------------------------------------
 # -----------------------------------------------------------------------------
@@ -174,8 +176,6 @@ def test_args(args):
         '{} does not exist.'.format(args.master_image)
 
 # -----------------------------------------------------------------------------
-
-
 
 if __name__ == '__main__':
 
