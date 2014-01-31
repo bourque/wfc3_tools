@@ -10,6 +10,7 @@ from astropy.io import ascii
 from astropy.io import fits
 import matplotlib.pyplot as plt
 import numpy as np
+import scipy
 import sqlite3
 
 # -----------------------------------------------------------------------------
@@ -21,13 +22,14 @@ class colImage():
 
     # -------------------------------------------------------------------------
 
-    def __init__(self, targname, exptime):
+    def __init__(self, targname, exptime, master_image):
         '''
         Assigns argument variables to class instances.
         '''
 
         self.targname = targname
         self.exptime = exptime
+        self.master_image = master_image
 
     # -------------------------------------------------------------------------
 
@@ -48,6 +50,32 @@ class colImage():
                    'rbiask', 'ibiask', 'loc'])
 
         return header_data
+
+    # -------------------------------------------------------------------------
+
+    def remove_columns(self, frame, qldb_rootnames, header_data):
+        '''
+        Removes columns that do not contain data of interest by comparing the
+        rootnames extracted from the QL database to the those in the header 
+        file.
+        '''
+
+        print 'Removing unwanted columns'
+
+        # Remove excess columns at the end
+        excess_start = len(header_data)
+        excess_end = frame.shape[1]
+        excess_cols = range(excess_start, excess_end)
+        cleaned_frame = np.delete(frame, excess_cols, 1)
+
+        # Remove cols from other images
+        bad_cols = [
+            header_data['col'][i] 
+            for i in range(len(header_data)) 
+            if header_data['rootname'][i] not in qldb_rootnames]
+        cleaned_frame = np.delete(cleaned_frame, bad_cols, 1)
+
+        return cleaned_frame
 
     # -------------------------------------------------------------------------
 
@@ -92,20 +120,21 @@ class colImage():
         # Read in amp header file
         header_data = self.extract_header_data()
 
-        # Determine which columns contain data of interest
-        print 'Extracting data of interest.'
-        data_cols = [
-            header_data['col'][i] 
-            for i in range(len(header_data)) 
-            if header_data['rootname'][i] in qldb_rootnames]
-
         # Read in FITS image
-        print 'Reading in image.'
-        frame = fits.open('AMPC_I0101.fits', ignore_missing_end = True)[0].data
+        print 'Reading in master image.'
+        frame = fits.open(self.master_image, ignore_missing_end = True)[0].data
+
+        # Remove unwanted columns in fits image
+        cleaned_frame = self.remove_columns(frame, qldb_rootnames, header_data)
+
+        # Save sub-image
+        newfile = self.master_image.replace(
+            '.fits', '_{}.fits'.format(self.targname))
+        fits.writeto(newfile, cleaned_frame, header=None, clobber=True)
 
     # -------------------------------------------------------------------------
 
 if __name__ == '__main__':
 
-    col_image = colImage('DARK', '900.0')
+    col_image = colImage('DARK', '900.0', 'AMPC_I0101.fits')
     col_image.col_image_main()
