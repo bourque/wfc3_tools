@@ -3,7 +3,9 @@
 '''
 ABOUT:
 This program creates an image of all WFC3 on-orbit columns for given TARGNAME,
-EXPTIME, and PROPOSID using Jay Anderson's master fits images.
+EXPTIME, and PROPOSID using Jay Anderson's master fits images. It also creates 
+an output text file containing the relation between (new) column, rootname, 
+and time of observation.
 '''
 
 import argparse
@@ -12,6 +14,8 @@ from astropy.io import fits
 import numpy as np
 import os
 import sqlite3
+
+WORK_DIR = '/grp/hst/wfc3h/bourque/postflash_dark_test/good_pixel_test/'
 
 # -----------------------------------------------------------------------------
 
@@ -39,7 +43,7 @@ class colImage():
         EXPTIME criteria
         '''
 
-        header_file = 'raw2raz_AMPC.hdr'
+        header_file = os.path.join(WORK_DIR, 'raw2raz_AMPC.hdr')
         print 'Reading data from {}.'.format(header_file)
 
         # Read in header file
@@ -51,23 +55,22 @@ class colImage():
 
     # -------------------------------------------------------------------------
 
-    def query_qldb(self):
+    def query_for_rootnames(self):
         '''
-        Queries the Quicklook Database and returns a list of rootnames meeting
-        the TARGNAME and EXPTIME criteria.
+        Queries the Quicklook Database and returns a list of rootnames
+        meeting the TARGNAME and EXPTIME criteria.
         '''
 
         # Open database connection
-        conn = sqlite3.connect('/grp/hst/wfc3a/Database/ql.db')
+        conn = sqlite3.connect('/Users/bourque/Desktop/ql.db')
         conn.text_factory = str
         db_cursor = conn.cursor()
 
         # Build query
-        command = "SELECT filename " + \
-                  "FROM UVIS_FLT_0 " + \
-                  "WHERE TARGNAME = '{}' ".format(self.targname) + \
-                  "AND EXPTIME = '{}'".format(self.exptime)
-        print command
+        command = 'SELECT filename ' + \
+                  'FROM UVIS_FLT_0 ' + \
+                  'WHERE TARGNAME = "{}" '.format(self.targname) + \
+                  'AND EXPTIME = "{}"'.format(self.exptime)
 
         # Execute query
         db_cursor.execute(command)
@@ -76,6 +79,48 @@ class colImage():
         results = db_cursor.fetchall()
         assert len(results) > 0, 'Query did not yield any resuts.'
         self.qldb_rootnames = [result[0].split('_')[0] for result in results]
+
+        # Close database connections
+        conn.close()
+
+ # -------------------------------------------------------------------------
+
+    def query_for_times(self, rootname_list):
+        '''
+        Queries the Quicklook Database and returns a list of DATE-OBSs and
+        TIME-OBS for a list of rootnames.
+        '''
+
+        print 'Gathering time information.'
+
+        # Open database connection
+        conn = sqlite3.connect('/Users/bourque/Desktop/ql.db')
+        conn.text_factory = str
+        db_cursor = conn.cursor()
+
+        date_obs_list, time_obs_list = [], []
+
+        for rootname in rootname_list:
+            
+            # Build query
+            command = 'SELECT "DATE-OBS", "TIME-OBS" ' + \
+                      'FROM UVIS_FLT_0 ' + \
+                      'WHERE filename like "{}%"'.format(rootname)
+            print command
+
+            # Execute query
+            db_cursor.execute(command)
+
+            # Parse results
+            results = db_cursor.fetchall()
+            assert len(results) > 0, 'Query did not yield any resuts.'
+            date_obs_list.extend([result[0] for result in results])
+            time_obs_list.extend([result[1] for result in results])
+
+        # Close database connection
+        conn.close()
+
+        return date_obs_list, time_obs_list
 
     # -------------------------------------------------------------------------
 
@@ -96,14 +141,14 @@ class colImage():
 
         # Remove cols from other images
         bad_cols = [
-            se;f.header_data['col'][i] 
+            self.header_data['col'][i] 
             for i in range(len(self.header_data)) 
             if self.header_data['rootname'][i] not in self.qldb_rootnames]
         self.cleaned_frame = np.delete(self.cleaned_frame, bad_cols, 1)
 
     # -------------------------------------------------------------------------
 
-    def read_image():
+    def read_image(self):
         '''
         Reads in the 'master image'.
         '''
@@ -114,14 +159,44 @@ class colImage():
 
     # -------------------------------------------------------------------------
 
-    def save_image():
+    def save_image(self):
         '''
         Saves the 'master image'.
         '''
 
-        newfile = self.master_image.replace(
-            '.fits', '_{}.fits'.format(self.targname))
+        newfile = os.path.join(WORK_DIR, self.master_image.replace(
+            '.fits', '_{}.fits'.format(self.targname)))
         fits.writeto(newfile, self.cleaned_frame, header=None, clobber=True)
+        print 'Saved image to {}'.format(newfile)
+
+    # -------------------------------------------------------------------------
+
+    def write_output(self):
+        '''
+        Writes an output file containing the relationships between the columns,
+        rootnames, and times of observation.
+        '''
+
+        # Build dictionary containing data to send to output
+        out_dict = {}
+        out_dict['columns'] = [self.header_data['col'][i] for i in 
+            range(len(self.header_data)) if self.header_data['rootname'][i] 
+            in self.qldb_rootnames]
+        out_dict['rootnames'] = [self.header_data['rootname'][i] for i in 
+            range(len(self.header_data)) if self.header_data['rootname'][i] 
+            in self.qldb_rootnames]
+
+        # Query database for DATE-OBS and TIME-OBS for each rootname
+        out_dict['date_obs'], out_dict['time_obs'] = \
+            self.query_for_times(out_dict['rootnames'])
+
+        # Write results to text file
+        outfile = os.path.join(WORK_DIR, 
+            self.master_image.replace('.fits', '.dat'))
+        ascii.write([out_dict['columns'], out_dict['rootnames'], 
+                     out_dict['date_obs'], out_dict['time_obs']], 
+                     outfile, 
+                     names=['column', 'rootname', 'DATE-OBS', 'TIME-OBS'])
 
     # -------------------------------------------------------------------------
     # -------------------------------------------------------------------------
@@ -131,11 +206,12 @@ class colImage():
         The main controller.
         '''
 
-        self.query_qldb()
+        self.query_for_rootnames()
         self.extract_header_data()
         self.read_image()
         self.remove_columns()
         self.save_image()
+        self.write_output()
 
 # -----------------------------------------------------------------------------
 # -----------------------------------------------------------------------------
