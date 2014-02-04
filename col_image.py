@@ -15,8 +15,6 @@ import numpy as np
 import os
 import sqlite3
 
-WORK_DIR = '/grp/hst/wfc3h/bourque/postflash_dark_test/good_pixel_test/'
-
 # -----------------------------------------------------------------------------
 
 class colImage():
@@ -43,7 +41,7 @@ class colImage():
         EXPTIME criteria
         '''
 
-        header_file = os.path.join(WORK_DIR, 'raw2raz_AMPC.hdr')
+        header_file = 'raw2raz_AMPC.hdr'
         print 'Reading data from {}.'.format(header_file)
 
         # Read in header file
@@ -62,7 +60,7 @@ class colImage():
         '''
 
         # Open database connection
-        conn = sqlite3.connect('/Users/bourque/Desktop/ql.db')
+        conn = sqlite3.connect('/grp/hst/wfc3a/Database/ql.db')
         conn.text_factory = str
         db_cursor = conn.cursor()
 
@@ -70,7 +68,8 @@ class colImage():
         command = 'SELECT filename ' + \
                   'FROM UVIS_FLT_0 ' + \
                   'WHERE TARGNAME = "{}" '.format(self.targname) + \
-                  'AND EXPTIME = "{}"'.format(self.exptime)
+                  'AND EXPTIME = "{}" '.format(self.exptime) + \
+                  'AND CHINJECT = "NONE"'
 
         # Execute query
         db_cursor.execute(command)
@@ -94,11 +93,11 @@ class colImage():
         print 'Gathering time information.'
 
         # Open database connection
-        conn = sqlite3.connect('/Users/bourque/Desktop/ql.db')
+        conn = sqlite3.connect('/grp/hst/wfc3a/Database/ql.db')
         conn.text_factory = str
         db_cursor = conn.cursor()
 
-        date_obs_list, time_obs_list = [], []
+        dateobs_list, timeobs_list = [], []
 
         for rootname in rootname_list:
             
@@ -114,13 +113,13 @@ class colImage():
             # Parse results
             results = db_cursor.fetchall()
             assert len(results) > 0, 'Query did not yield any resuts.'
-            date_obs_list.extend([result[0] for result in results])
-            time_obs_list.extend([result[1] for result in results])
+            dateobs_list.extend([result[0] for result in results])
+            timeobs_list.extend([result[1] for result in results])
 
         # Close database connection
         conn.close()
 
-        return date_obs_list, time_obs_list
+        return dateobs_list, timeobs_list
 
     # -------------------------------------------------------------------------
 
@@ -134,14 +133,14 @@ class colImage():
         print 'Removing unwanted columns'
 
         # Remove excess columns at the end
-        excess_start = len(self.header_data)
+        excess_start = len(self.header_data) - 1
         excess_end = self.frame.shape[1]
         excess_cols = range(excess_start, excess_end)
         self.cleaned_frame = np.delete(self.frame, excess_cols, 1)
 
         # Remove cols from other images
         bad_cols = [
-            self.header_data['col'][i] 
+            self.header_data['col'][i] - 1
             for i in range(len(self.header_data)) 
             if self.header_data['rootname'][i] not in self.qldb_rootnames]
         self.cleaned_frame = np.delete(self.cleaned_frame, bad_cols, 1)
@@ -155,7 +154,8 @@ class colImage():
 
         # Read in FITS image
         print 'Reading in master image.'
-        self.frame = fits.open(self.master_image, ignore_missing_end = True)[0].data
+        self.frame = fits.open(self.master_image, 
+                               ignore_missing_end = True)[0].data
 
     # -------------------------------------------------------------------------
 
@@ -164,8 +164,8 @@ class colImage():
         Saves the 'master image'.
         '''
 
-        newfile = os.path.join(WORK_DIR, self.master_image.replace(
-            '.fits', '_{}.fits'.format(self.targname)))
+        newfile = self.master_image.replace(
+            '.fits', '_{}.fits'.format(self.targname))
         fits.writeto(newfile, self.cleaned_frame, header=None, clobber=True)
         print 'Saved image to {}'.format(newfile)
 
@@ -188,15 +188,15 @@ class colImage():
 
         # Query database for DATE-OBS and TIME-OBS for each rootname
         out_dict['date_obs'], out_dict['time_obs'] = \
-            self.query_for_times(out_dict['rootnames'])
+            self.query_for_times(out_dict['columns'], out_dict['rootnames'])
 
         # Write results to text file
-        outfile = os.path.join(WORK_DIR, 
-            self.master_image.replace('.fits', '.dat'))
-        ascii.write([out_dict['columns'], out_dict['rootnames'], 
-                     out_dict['date_obs'], out_dict['time_obs']], 
-                     outfile, 
-                     names=['column', 'rootname', 'DATE-OBS', 'TIME-OBS'])
+        outfile = '{}_times.dat'.format(self.targname)
+        ascii.write(
+            [out_dict['columns'], out_dict['rootnames'], out_dict['date_obs'], 
+             out_dict['time_obs']], 
+            outfile, 
+            names=['column', 'rootname', 'DATE-OBS', 'TIME-OBS'])
 
     # -------------------------------------------------------------------------
     # -------------------------------------------------------------------------
