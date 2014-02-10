@@ -73,7 +73,7 @@ def write_metadata(targname, header_data, qldb_rootnames):
     outfile = '{}_metadata.dat'.format(targname)
     ascii.write([
         out_dict['orig_columns'], 
-        out_dict['new_coluns'],
+        out_dict['new_columns'],
         out_dict['rootnames'], 
         out_dict['date_obs'], 
         out_dict['time_obs']], 

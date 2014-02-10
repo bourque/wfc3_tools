@@ -21,13 +21,15 @@ class MakeImage():
 
     # -------------------------------------------------------------------------
 
-    def __init__(self, targname, exptime, master_image, metadata_switch):
+    def __init__(self, targname, exptime, postflash, master_image, 
+                 metadata_switch):
         '''
         Assigns argument variables to class instances.
         '''
 
         self.targname = targname
         self.exptime = exptime
+        self.postflash = postflash
         self.master_image = master_image
         self.metadata_switch = metadata_switch
 
@@ -68,6 +70,11 @@ class MakeImage():
                   'WHERE TARGNAME = "{}" '.format(self.targname) + \
                   'AND EXPTIME = "{}" '.format(self.exptime) + \
                   'AND CHINJECT = "NONE"'
+
+        if self.postflash == 'on':
+            command += ' AND FLSHFILE LIKE "iref%"'
+        elif self.postflash == 'off':
+            command += ' AND FLSHFILE LIKE "N/A"'
 
         # Execute query
         db_cursor.execute(command)
