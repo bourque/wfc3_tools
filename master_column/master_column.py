@@ -11,7 +11,6 @@ import argparse
 import os
 
 import make_image
-import subtract_postflash
 import write_metadata
 
 # -----------------------------------------------------------------------------

@@ -11,6 +11,7 @@ from astropy.io import fits
 import datetime
 import os
 import matplotlib.pyplot as plt
+import numpy as np
 
 # -----------------------------------------------------------------------------
 
@@ -30,6 +31,34 @@ class pixEvolve():
 
     # -------------------------------------------------------------------------
 
+    def average_month(self, row, col_times):
+        '''
+        Returns a list of monthly averaged pixel values.
+        '''
+
+        num_months = (col_times[-1] - col_times[0]).days / 30
+        avg_pix_list, avg_time_list = [], []
+
+        pixels = self.frame[row,:]
+
+        start_dates = [col_times[0]]
+        for i in range(num_months):
+            start_dates.append(start_dates[-1] + datetime.timedelta(30))
+
+        end_dates = [col_times[0] + datetime.timedelta(30)]
+        for i in range(num_months):
+            end_dates.append(end_dates[-1] + datetime.timedelta(30))
+
+        for start, end in zip(start_dates, end_dates):
+            month_pixels = [pix for pix, time in zip(pixels, col_times) if start <= time < end]
+            month_average = np.median(month_pixels)
+            avg_pix_list.append(month_average)
+            avg_time_list.append(end)
+
+        return avg_pix_list, avg_time_list
+
+    # -------------------------------------------------------------------------
+
     def extract_metadata(self):
         '''
         Extracts the metadata associated with the master image from the
@@ -41,6 +70,25 @@ class pixEvolve():
         self.metadata = ascii.read(metadata_file, data_start=1, 
             names=['orig_columns', 'new_columns', 'rootnames', 'date_obs', 
                    'time_obs'])
+
+    # -------------------------------------------------------------------------
+
+    def get_good_rows(self):
+        '''
+        Uses the bad pixel stack image ("badpix.fits") to determine which
+        rows have "good pixels" for the given column.  
+        '''
+
+        col = int(self.master_image.split('_')[1][2:5]) - 25
+        badpix_stack = fits.open('badpix.fits', 
+                               ignore_missing_end = True)[0].data
+        print col
+        badpix_stack_col = badpix_stack[:, col - 1]
+        print badpix_stack_col
+        row_list = np.where(badpix_stack_col == 0)[0]
+        print row_list
+
+        return row_list
 
     # -------------------------------------------------------------------------
 
@@ -75,19 +123,24 @@ class pixEvolve():
             time = datetime.datetime.strptime(time_obs, '%H:%M:%S')
             col_times.append(datetime.datetime.combine(date.date(), time.time()))
 
-        # Create plot
+        # Set plotting parameters
         plt.figure()
         plt.minorticks_on()
         plt.grid()
         plt.xlabel('Time')
-        plt.ylabel('Pixel value')
-        plt.ylim((-10, 50))
-
-        # Rotate x-axis labels
+        plt.ylabel('30-day Average Pixel value')
+        plt.ylim((-2, 50))
         plt.setp(plt.xticks()[1], rotation=30)
         plt.gcf().subplots_adjust(bottom=0.15)
 
-        plt.scatter(col_times, self.frame[700,:], s=20, c='k', marker= '+')
+        row_list = self.get_good_rows()
+        #row_list = [2]
+        for row in row_list:
+            avg_pix_list, avg_time_list = self.average_month(row, col_times)
+            if avg_pix_list[2] > 400:
+                print row, avg_pix_list
+
+            plt.scatter(avg_time_list, avg_pix_list, s=20, c='k', marker= '+')
 
         filename = 'test.png'
         plt.savefig(filename)
